@@ -1,1 +1,13 @@
 project_id = "jdwsbepqawfyvopjksvu"
+
+[auth]
+enabled = true
+
+[functions.validate-gst]
+verify_jwt = false
+
+[functions.send-notification]
+verify_jwt = false
+
+[functions.sync-to-sheets]
+verify_jwt = false
