@@ -13,6 +13,7 @@ import NewOrder from "./pages/order/NewOrder";
 import OrderSuccess from "./pages/order/OrderSuccess";
 import Tracking from "./pages/Tracking";
 import AdminDashboard from "./pages/admin/AdminDashboard";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,6 +26,7 @@ const App = () => (
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/auth" element={<Auth />} />
           <Route path="/catalog" element={<Catalog />} />
           <Route path="/product/:id" element={<ProductDetails />} />
           <Route path="/supplier/signup" element={<SupplierSignup />} />

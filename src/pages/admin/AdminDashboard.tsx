@@ -1,225 +1,343 @@
+import { useState, useEffect } from "react";
 import { Header } from "@/components/layout/Header";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { CheckCircle, XCircle, Clock, Package, Users, ShoppingCart } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { supabase } from "@/integrations/supabase/client";
 
 const AdminDashboard = () => {
   const { toast } = useToast();
+  const [pendingApprovals, setPendingApprovals] = useState<any[]>([]);
+  const [pendingProducts, setPendingProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Mock data - will be replaced with Google Sheets integration
-  const pendingApprovals = {
-    suppliers: [
-      { id: 1, name: "Fashion Exports Ltd", email: "contact@fashionexports.com", date: "2025-01-20" }
-    ],
-    buyers: [
-      { id: 1, name: "Retail Corp", email: "buyer@retailcorp.com", gst: "27AABCU9603R1ZX", date: "2025-01-21" }
-    ],
-    products: [
-      { id: 1, name: "Premium Cotton T-Shirt", supplier: "Fashion Exports Ltd", price: "₹299", date: "2025-01-22" }
-    ]
+  useEffect(() => {
+    fetchPendingData();
+  }, []);
+
+  const fetchPendingData = async () => {
+    try {
+      // Fetch pending supplier/buyer approvals
+      const { data: approvals, error: approvalsError } = await supabase
+        .from('pending_approvals')
+        .select('*, profiles(email, company_name)')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (approvalsError) throw approvalsError;
+
+      // Fetch pending products
+      const { data: products, error: productsError } = await supabase
+        .from('product_review_queue')
+        .select('*, profiles(email, company_name)')
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+
+      if (productsError) throw productsError;
+
+      setPendingApprovals(approvals || []);
+      setPendingProducts(products || []);
+    } catch (error: any) {
+      console.error('Error fetching data:', error);
+      toast({
+        title: "Error loading data",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const stats = [
-    { label: "Total Suppliers", value: "24", icon: Package, color: "text-primary" },
-    { label: "Total Buyers", value: "156", icon: Users, color: "text-success" },
-    { label: "Total Orders", value: "892", icon: ShoppingCart, color: "text-warning" },
-    { label: "Pending Approvals", value: "3", icon: Clock, color: "text-destructive" }
-  ];
+  const handleApprovalAction = async (approvalId: string, action: 'approve' | 'reject', approval: any) => {
+    try {
+      const isApproved = action === 'approve';
 
-  const handleApprove = (type: string, id: number) => {
-    // TODO: Update Google Sheets
-    // TODO: Send approval email
-    toast({
-      title: "Approved!",
-      description: `${type} has been approved and notified via email.`
-    });
+      // Update pending_approvals status
+      const { error: updateError } = await supabase
+        .from('pending_approvals')
+        .update({
+          status: isApproved ? 'approved' : 'rejected',
+          rejection_reason: isApproved ? null : 'Admin rejected'
+        })
+        .eq('id', approvalId);
+
+      if (updateError) throw updateError;
+
+      if (isApproved) {
+        // Assign role to user
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: approval.user_id,
+            role: approval.approval_type
+          });
+
+        if (roleError) throw roleError;
+
+        // Sync to Google Sheets
+        await supabase.functions.invoke('sync-to-sheets', {
+          body: {
+            sheetName: approval.approval_type === 'supplier' ? 'Active_Suppliers' : 'Active_Buyers',
+            data: {
+              company_name: approval.company_name,
+              contact_person: approval.contact_person,
+              email: approval.email,
+              phone: approval.phone,
+              gst: approval.gst,
+              approved_at: new Date().toISOString()
+            }
+          }
+        });
+
+        // Send notification
+        await supabase.functions.invoke('send-notification', {
+          body: {
+            type: approval.approval_type === 'supplier' ? 'supplier_approved' : 'buyer_approved',
+            data: {
+              email: approval.email,
+              companyName: approval.company_name
+            }
+          }
+        });
+      }
+
+      toast({
+        title: isApproved ? "Approved!" : "Rejected",
+        description: `${approval.approval_type === 'supplier' ? 'Supplier' : 'Buyer'} application ${isApproved ? 'approved' : 'rejected'} successfully`
+      });
+
+      fetchPendingData();
+    } catch (error: any) {
+      console.error('Error handling approval:', error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
   };
 
-  const handleReject = (type: string, id: number) => {
-    // TODO: Update Google Sheets
-    toast({
-      title: "Rejected",
-      description: `${type} has been rejected.`,
-      variant: "destructive"
-    });
+  const handleProductAction = async (productId: string, action: 'approve' | 'reject', product: any) => {
+    try {
+      const isApproved = action === 'approve';
+
+      if (isApproved) {
+        // Move product to catalog
+        const { error: catalogError } = await supabase
+          .from('product_catalog')
+          .insert({
+            supplier_id: product.supplier_id,
+            product_name: product.product_name,
+            category: product.category,
+            description: product.description,
+            price: product.price,
+            moq: product.moq,
+            images: product.images
+          });
+
+        if (catalogError) throw catalogError;
+
+        // Update product review queue
+        const { error: updateError } = await supabase
+          .from('product_review_queue')
+          .update({ status: 'approved' })
+          .eq('id', productId);
+
+        if (updateError) throw updateError;
+
+        // Sync to Google Sheets
+        await supabase.functions.invoke('sync-to-sheets', {
+          body: {
+            sheetName: 'Product_Catalog',
+            data: {
+              product_name: product.product_name,
+              category: product.category,
+              price: product.price,
+              moq: product.moq,
+              supplier: product.profiles?.company_name || 'Unknown',
+              approved_at: new Date().toISOString()
+            }
+          }
+        });
+
+        // Send Telegram notification
+        await supabase.functions.invoke('send-notification', {
+          body: {
+            type: 'product_approved',
+            data: {
+              productName: product.product_name,
+              category: product.category,
+              price: product.price,
+              moq: product.moq,
+              supplierName: product.profiles?.company_name || 'Unknown'
+            }
+          }
+        });
+      } else {
+        const { error: updateError } = await supabase
+          .from('product_review_queue')
+          .update({
+            status: 'rejected',
+            rejection_reason: 'Admin rejected'
+          })
+          .eq('id', productId);
+
+        if (updateError) throw updateError;
+      }
+
+      toast({
+        title: isApproved ? "Product Approved!" : "Product Rejected",
+        description: `${product.product_name} ${isApproved ? 'approved and added to catalog' : 'rejected'}`
+      });
+
+      fetchPendingData();
+    } catch (error: any) {
+      console.error('Error handling product:', error);
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="flex items-center justify-center min-h-[50vh]">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      
-      <div className="container mx-auto px-4 py-8">
-        <h1 className="text-4xl font-bold mb-8">Admin Dashboard</h1>
+    <ProtectedRoute allowedRoles={['admin']}>
+      <div className="min-h-screen bg-background">
+        <Header />
+        
+        <div className="container mx-auto px-4 py-8">
+          <h1 className="text-4xl font-bold mb-8">Admin Dashboard</h1>
 
-        {/* Stats Grid */}
-        <div className="grid md:grid-cols-4 gap-6 mb-8">
-          {stats.map((stat, index) => (
-            <Card key={index}>
-              <CardContent className="pt-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">{stat.label}</p>
-                    <p className="text-3xl font-bold mt-1">{stat.value}</p>
-                  </div>
-                  <stat.icon className={`h-10 w-10 ${stat.color}`} />
-                </div>
+          <div className="grid md:grid-cols-2 gap-6 mb-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Pending Approvals</CardTitle>
+                <CardDescription>Review supplier and buyer applications</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pendingApprovals.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-4">No pending approvals</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Company</TableHead>
+                        <TableHead>GST Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingApprovals.map((approval) => (
+                        <TableRow key={approval.id}>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {approval.approval_type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{approval.company_name}</TableCell>
+                          <TableCell>
+                            {approval.gst_validation_status === 'valid' && (
+                              <Badge variant="default">Valid</Badge>
+                            )}
+                            {approval.gst_validation_status === 'invalid' && (
+                              <Badge variant="destructive">Invalid</Badge>
+                            )}
+                            {approval.gst_validation_status === 'pending' && (
+                              <Badge variant="secondary">Pending</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="space-x-2">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleApprovalAction(approval.id, 'approve', approval)}
+                            >
+                              Approve
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive" 
+                              onClick={() => handleApprovalAction(approval.id, 'reject', approval)}
+                            >
+                              Reject
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
-          ))}
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Pending Product Approvals</CardTitle>
+                <CardDescription>Review and approve new product listings</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {pendingProducts.length === 0 ? (
+                  <p className="text-muted-foreground text-center py-4">No pending products</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Supplier</TableHead>
+                        <TableHead>Price</TableHead>
+                        <TableHead>MOQ</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pendingProducts.map((product) => (
+                        <TableRow key={product.id}>
+                          <TableCell className="font-medium">{product.product_name}</TableCell>
+                          <TableCell>{product.profiles?.company_name || 'Unknown'}</TableCell>
+                          <TableCell>₹{product.price}</TableCell>
+                          <TableCell>{product.moq} units</TableCell>
+                          <TableCell className="space-x-2">
+                            <Button 
+                              size="sm" 
+                              onClick={() => handleProductAction(product.id, 'approve', product)}
+                            >
+                              Approve
+                            </Button>
+                            <Button 
+                              size="sm" 
+                              variant="destructive" 
+                              onClick={() => handleProductAction(product.id, 'reject', product)}
+                            >
+                              Reject
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
-
-        {/* Pending Suppliers */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Pending Supplier Approvals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Company Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Applied On</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendingApprovals.suppliers.map((supplier) => (
-                  <TableRow key={supplier.id}>
-                    <TableCell className="font-medium">{supplier.name}</TableCell>
-                    <TableCell>{supplier.email}</TableCell>
-                    <TableCell>{supplier.date}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleApprove("Supplier", supplier.id)}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1 text-success" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleReject("Supplier", supplier.id)}
-                        >
-                          <XCircle className="h-4 w-4 mr-1 text-destructive" />
-                          Reject
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        {/* Pending Buyers */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle>Pending Buyer Approvals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Company Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>GST Number</TableHead>
-                  <TableHead>Applied On</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendingApprovals.buyers.map((buyer) => (
-                  <TableRow key={buyer.id}>
-                    <TableCell className="font-medium">{buyer.name}</TableCell>
-                    <TableCell>{buyer.email}</TableCell>
-                    <TableCell>{buyer.gst}</TableCell>
-                    <TableCell>{buyer.date}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleApprove("Buyer", buyer.id)}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1 text-success" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleReject("Buyer", buyer.id)}
-                        >
-                          <XCircle className="h-4 w-4 mr-1 text-destructive" />
-                          Reject
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        {/* Pending Products */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Pending Product Approvals</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Product Name</TableHead>
-                  <TableHead>Supplier</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Added On</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {pendingApprovals.products.map((product) => (
-                  <TableRow key={product.id}>
-                    <TableCell className="font-medium">{product.name}</TableCell>
-                    <TableCell>{product.supplier}</TableCell>
-                    <TableCell>{product.price}</TableCell>
-                    <TableCell>{product.date}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleApprove("Product", product.id)}
-                        >
-                          <CheckCircle className="h-4 w-4 mr-1 text-success" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleReject("Product", product.id)}
-                        >
-                          <XCircle className="h-4 w-4 mr-1 text-destructive" />
-                          Reject
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 };
 
