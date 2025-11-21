@@ -14,16 +14,280 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      orders: {
+        Row: {
+          buyer_id: string
+          created_at: string
+          id: string
+          product_id: string
+          quantity: number
+          status: string
+          supplier_id: string
+          total_amount: number
+          tracking_number: string | null
+          tracking_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          buyer_id: string
+          created_at?: string
+          id?: string
+          product_id: string
+          quantity: number
+          status?: string
+          supplier_id: string
+          total_amount: number
+          tracking_number?: string | null
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          buyer_id?: string
+          created_at?: string
+          id?: string
+          product_id?: string
+          quantity?: number
+          status?: string
+          supplier_id?: string
+          total_amount?: number
+          tracking_number?: string | null
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "orders_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "product_catalog"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pending_approvals: {
+        Row: {
+          address: string | null
+          approval_type: string
+          business_type: string | null
+          city: string | null
+          company_name: string
+          contact_person: string
+          created_at: string
+          email: string
+          gst: string
+          gst_validation_message: string | null
+          gst_validation_status: string | null
+          id: string
+          phone: string
+          pincode: string | null
+          rejection_reason: string | null
+          state: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address?: string | null
+          approval_type: string
+          business_type?: string | null
+          city?: string | null
+          company_name: string
+          contact_person: string
+          created_at?: string
+          email: string
+          gst: string
+          gst_validation_message?: string | null
+          gst_validation_status?: string | null
+          id?: string
+          phone: string
+          pincode?: string | null
+          rejection_reason?: string | null
+          state?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string | null
+          approval_type?: string
+          business_type?: string | null
+          city?: string | null
+          company_name?: string
+          contact_person?: string
+          created_at?: string
+          email?: string
+          gst?: string
+          gst_validation_message?: string | null
+          gst_validation_status?: string | null
+          id?: string
+          phone?: string
+          pincode?: string | null
+          rejection_reason?: string | null
+          state?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      product_catalog: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          images: string[] | null
+          is_active: boolean
+          moq: number
+          price: number
+          product_name: string
+          supplier_id: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: string[] | null
+          is_active?: boolean
+          moq: number
+          price: number
+          product_name: string
+          supplier_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: string[] | null
+          is_active?: boolean
+          moq?: number
+          price?: number
+          product_name?: string
+          supplier_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      product_review_queue: {
+        Row: {
+          category: string
+          created_at: string
+          description: string | null
+          id: string
+          images: string[] | null
+          moq: number
+          price: number
+          product_name: string
+          rejection_reason: string | null
+          status: string
+          supplier_id: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: string[] | null
+          moq: number
+          price: number
+          product_name: string
+          rejection_reason?: string | null
+          status?: string
+          supplier_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          images?: string[] | null
+          moq?: number
+          price?: number
+          product_name?: string
+          rejection_reason?: string | null
+          status?: string
+          supplier_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          company_name: string | null
+          contact_person: string | null
+          created_at: string
+          email: string
+          id: string
+          phone: string | null
+          updated_at: string
+        }
+        Insert: {
+          company_name?: string | null
+          contact_person?: string | null
+          created_at?: string
+          email: string
+          id: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          company_name?: string | null
+          contact_person?: string | null
+          created_at?: string
+          email?: string
+          id?: string
+          phone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role:
+        | "admin"
+        | "supplier"
+        | "buyer"
+        | "pending_supplier"
+        | "pending_buyer"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +414,14 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: [
+        "admin",
+        "supplier",
+        "buyer",
+        "pending_supplier",
+        "pending_buyer",
+      ],
+    },
   },
 } as const
