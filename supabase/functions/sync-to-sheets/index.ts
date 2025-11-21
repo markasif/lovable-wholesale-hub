@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { GoogleSpreadsheet } from "npm:google-spreadsheet@4.1.1";
-import { JWT } from "npm:google-auth-library@9";
+import { GoogleSpreadsheet } from "https://esm.sh/google-spreadsheet@4.1.1";
+import { JWT } from "https://esm.sh/google-auth-library@9";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -61,7 +61,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in sync-to-sheets:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,

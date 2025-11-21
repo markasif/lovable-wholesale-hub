@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { Resend } from "npm:resend@2.0.0";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,17 +20,17 @@ serve(async (req) => {
 
     console.log(`Sending ${type} notification`, data);
 
-    let result = { email: null, telegram: null };
+    let result: { email: any; telegram: any } = { email: null, telegram: null };
 
     // Send email notifications
     if (type === 'buyer_approved' || type === 'supplier_approved' || type === 'buyer_rejected') {
-      const emailSubjects = {
+      const emailSubjects: Record<string, string> = {
         buyer_approved: 'Your Buyer Application Approved! 🎉',
         supplier_approved: 'Your Supplier Application Approved! 🎉',
         buyer_rejected: 'Buyer Application Status Update'
       };
 
-      const emailBodies = {
+      const emailBodies: Record<string, string> = {
         buyer_approved: `
           <h1>Congratulations!</h1>
           <p>Your buyer application for <strong>${data.companyName}</strong> has been approved.</p>
@@ -134,7 +134,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in send-notification:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
